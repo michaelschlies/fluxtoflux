@@ -1,0 +1,30 @@
+{
+  "instances": {
+    "main": {
+      "label": "fluxer.app",
+      "origin": "https://fluxer.app",
+      "token": "APP_ID.SECRET"
+    },
+    "custom": {
+      "label": "my-instance",
+      "origin": "https://chat.example.com",
+      "token": "APP_ID.SECRET"
+    }
+  },
+  "links": [
+    {
+      "name": "general",
+      "channels": { "main": "111111111111111111", "custom": "222222222222222222" }
+    },
+    {
+      "name": "announcements",
+      "channels": { "main": "333333333333333333", "custom": "444444444444444444" },
+      "oneWayFrom": "main"
+    }
+  ],
+  "options": {
+    "bridgeBots": false,
+    "maxAttachmentBytes": 26214400,
+    "dataDir": "data"
+  }
+}

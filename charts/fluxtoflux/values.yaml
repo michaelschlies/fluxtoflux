@@ -1,0 +1,62 @@
+image:
+  # Set to the image the publish workflow pushes: ghcr.io/<owner>/<repo>
+  repository: ghcr.io/OWNER/fluxtoflux
+  # Defaults to the chart appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+# Rendered into /config/config.json. Instance keys must be alphanumeric/underscore
+# because tokens are passed as FLUXER_TOKEN_<KEY> environment variables.
+config:
+  instances:
+    main:
+      label: fluxer.app
+      origin: https://fluxer.app
+    custom:
+      label: my-instance
+      origin: https://chat.example.com
+  links: []
+  #  - name: general
+  #    channels: { main: "111111111111111111", custom: "222222222222222222" }
+  #  - name: announcements
+  #    channels: { main: "333333333333333333", custom: "444444444444444444" }
+  #    oneWayFrom: main
+  options:
+    bridgeBots: false
+    maxAttachmentBytes: 26214400
+
+# Bot tokens by instance key. Stored in a Secret created by this chart.
+# Prefer existingSecret in real deployments so tokens stay out of values files.
+tokens: {}
+#  main: "APP_ID.SECRET"
+#  custom: "APP_ID.SECRET"
+
+# Name of a pre-created Secret holding FLUXER_TOKEN_<KEY> entries (e.g. FLUXER_TOKEN_MAIN).
+# When set, `tokens` is ignored.
+existingSecret: ""
+
+# Message id map (needed to follow edits and deletes). Without it, an emptyDir is used
+# and the map is lost on pod restart.
+persistence:
+  enabled: true
+  size: 1Gi
+  storageClass: ""
+  accessModes: [ReadWriteOnce]
+  existingClaim: ""
+
+resources:
+  requests:
+    cpu: 20m
+    memory: 64Mi
+  limits:
+    memory: 256Mi
+
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+nameOverride: ""
+fullnameOverride: ""

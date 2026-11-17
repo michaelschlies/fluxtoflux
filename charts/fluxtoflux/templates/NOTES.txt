@@ -1,0 +1,13 @@
+fluxtoflux is running as a single replica. Check it with:
+
+  kubectl logs deploy/{{ include "fluxtoflux.fullname" . }} -n {{ .Release.Namespace }}
+
+{{- if not .Values.config.links }}
+
+WARNING: config.links is empty, so nothing is being bridged yet.
+{{- end }}
+{{- if not .Values.persistence.enabled }}
+
+NOTE: persistence is disabled. The message id map is lost on restart, so edits and deletes
+of messages bridged before the restart will not be mirrored.
+{{- end }}

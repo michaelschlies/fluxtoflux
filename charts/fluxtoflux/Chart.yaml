@@ -1,0 +1,6 @@
+apiVersion: v2
+name: fluxtoflux
+description: Bridge channels between Fluxer instances
+type: application
+version: 0.1.0
+appVersion: "latest"

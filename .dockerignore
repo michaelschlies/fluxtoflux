@@ -1,0 +1,11 @@
+.git
+.github
+charts
+openspec
+test
+data
+node_modules
+config.json
+*.md
+Dockerfile
+.dockerignore

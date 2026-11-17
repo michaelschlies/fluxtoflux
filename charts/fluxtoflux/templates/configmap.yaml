@@ -1,0 +1,11 @@
+{{- /* Instance tokens are deliberately absent here; they come from the Secret as env vars. */ -}}
+{{- $options := merge (dict "dataDir" "/data") (deepCopy (default (dict) .Values.config.options)) -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "fluxtoflux.fullname" . }}
+  labels:
+    {{- include "fluxtoflux.labels" . | nindent 4 }}
+data:
+  config.json: |
+    {{- dict "instances" .Values.config.instances "links" .Values.config.links "options" $options | toPrettyJson | nindent 4 }}
