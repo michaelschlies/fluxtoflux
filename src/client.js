@@ -77,6 +77,12 @@ export class FluxerClient extends EventEmitter {
     }
   }
 
+  /** Learn the bot's own user before the Gateway is up, so history can be screened for our echoes. */
+  async ensureUser() {
+    this.user ??= await this.rest('GET', '/users/@me');
+    return this.user;
+  }
+
   // ---- Gateway ---------------------------------------------------------------
 
   async connect() {

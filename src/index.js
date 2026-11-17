@@ -5,6 +5,9 @@ import { Store } from './store.js';
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 const checkOnly = process.argv.includes('--check');
+const backfillOnly = process.argv.includes('--backfill');
+const linkFlag = process.argv.indexOf('--link');
+const onlyLink = linkFlag > 0 ? process.argv[linkFlag + 1] : undefined;
 
 const cfg = loadConfig();
 const clients = new Map(Object.entries(cfg.instances).map(([k, v]) => [k, new FluxerClient(k, v, log)]));
@@ -41,7 +44,20 @@ if (checkOnly) {
 }
 
 await bridge.setupWebhooks();
+
+if (backfillOnly) {
+  if (onlyLink && !cfg.links.some((l) => l.name === onlyLink)) {
+    log(`FAIL no link named "${onlyLink}"`);
+    process.exit(1);
+  }
+  const ok = await bridge.catchUp({ link: onlyLink });
+  await bridge.idle();
+  log(ok ? 'backfill finished' : 'backfill finished with errors');
+  process.exit(ok ? 0 : 1);
+}
+
 bridge.attach();
+bridge.holdForCatchUp(); // live messages for channels being caught up wait until the history is relayed
 
 for (const client of clients.values()) {
   client.on('fatal', (err) => {
@@ -50,6 +66,8 @@ for (const client of clients.values()) {
   });
   await client.connect();
 }
+
+bridge.catchUp().then((ok) => ok || log('catch-up finished with errors'));
 
 const shutdown = () => {
   log('shutting down');

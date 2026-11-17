@@ -57,47 +57,47 @@ export async function createHarness({ keys = ['a', 'b'], channels, options = {},
   }
 
   async function build() {
-  prepare?.(mocks);
-  const defaultChannels = Object.fromEntries(keys.map((k, i) => [k, String(10 + i * 10)]));
-  const cfg = {
-    instances,
-    links: links ?? [{ name: 'main', channels: channels ?? defaultChannels }],
-    options: { bridgeBots: false, maxAttachmentBytes: 1024, dataDir: '', ...options },
-  };
-  const logs = [];
-  const log = (...a) => logs.push(a.join(' '));
-  const clients = new Map();
-  for (const key of keys) {
-    const client = new FluxerClient(key, instances[key], log);
-    client.retryBaseMs = 1;
-    await client.discover();
-    client.user = { id: mocks[key].userId, username: 'bridge' };
-    clients.set(key, client);
-  }
-  const tmp = tmpDir();
-  const store = new Store(tmp.dir);
-  const bridge = new Bridge(cfg, clients, store, log);
-  await bridge.setupWebhooks();
-  bridge.attach();
+    prepare?.(mocks);
+    const defaultChannels = Object.fromEntries(keys.map((k, i) => [k, String(10 + i * 10)]));
+    const cfg = {
+      instances,
+      links: links ?? [{ name: 'main', channels: channels ?? defaultChannels }],
+      options: { bridgeBots: false, maxAttachmentBytes: 1024, dataDir: '', ...options },
+    };
+    const logs = [];
+    const log = (...a) => logs.push(a.join(' '));
+    const clients = new Map();
+    for (const key of keys) {
+      const client = new FluxerClient(key, instances[key], log);
+      client.retryBaseMs = 1;
+      await client.discover();
+      client.user = { id: mocks[key].userId, username: 'bridge' };
+      clients.set(key, client);
+    }
+    const tmp = tmpDir();
+    const store = new Store(tmp.dir);
+    const bridge = new Bridge(cfg, clients, store, log);
+    await bridge.setupWebhooks();
+    bridge.attach();
 
-  return {
-    mocks,
-    clients,
-    bridge,
-    store,
-    cfg,
-    logs,
-    tmp,
-    /** Deliver an event to the bridge as if the Gateway had sent it, then wait for it to settle. */
-    async emit(key, type, payload) {
-      clients.get(key).emit(type, payload);
-      await bridge.idle();
-    },
-    async cleanup() {
-      store.db.close();
-      tmp.remove();
-      await Promise.all(Object.values(mocks).map((m) => m.close()));
-    },
-  };
+    return {
+      mocks,
+      clients,
+      bridge,
+      store,
+      cfg,
+      logs,
+      tmp,
+      /** Deliver an event to the bridge as if the Gateway had sent it, then wait for it to settle. */
+      async emit(key, type, payload) {
+        clients.get(key).emit(type, payload);
+        await bridge.idle();
+      },
+      async cleanup() {
+        store.db.close();
+        tmp.remove();
+        await Promise.all(Object.values(mocks).map((m) => m.close()));
+      },
+    };
   }
 }

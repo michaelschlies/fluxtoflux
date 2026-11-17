@@ -18,7 +18,10 @@ describe('process', () => {
   async function scenario({ tokens = true, links, mutate } = {}) {
     const mocks = { a: await startMock({ name: 'a' }), b: await startMock({ name: 'b' }) };
     const tmp = tmpDir();
-    cleanups.push(() => tmp.remove(), () => Promise.all(Object.values(mocks).map((m) => m.close())));
+    cleanups.push(
+      () => tmp.remove(),
+      () => Promise.all(Object.values(mocks).map((m) => m.close())),
+    );
     mutate?.(mocks);
     const config = {
       instances: {
@@ -38,22 +41,22 @@ describe('process', () => {
       cwd: root,
       env: { ...process.env, BRIDGE_CONFIG: configPath, ...env },
     });
-    const run = { out: '', code: undefined, child };
-    child.stdout.on('data', (d) => (run.out += d));
-    child.stderr.on('data', (d) => (run.out += d));
-    run.exited = new Promise((resolve) =>
+    const proc = { out: '', code: undefined, child };
+    child.stdout.on('data', (d) => (proc.out += d));
+    child.stderr.on('data', (d) => (proc.out += d));
+    proc.exited = new Promise((resolve) =>
       child.on('exit', (code) => {
-        run.code = code;
+        proc.code = code;
         resolve(code);
       }),
     );
     cleanups.push(async () => {
-      if (run.code === undefined) {
+      if (proc.code === undefined) {
         child.kill();
-        await run.exited;
+        await proc.exited;
       }
     });
-    return run;
+    return proc;
   }
 
   describe('--check', () => {
@@ -81,6 +84,44 @@ describe('process', () => {
       const r = run(configPath, ['--check']);
       assert.equal(await r.exited, 1);
       assert.match(r.out, /FAIL webhook setup:.*403.*Manage Webhooks/);
+    });
+  });
+
+  describe('--backfill', () => {
+    const history = (mocks) =>
+      mocks.a.history.set('10', [
+        message({ id: '101', channel_id: '10', content: 'old one', timestamp: '2026-01-02T15:04:05.000Z' }),
+        message({ id: '102', channel_id: '10', content: 'old two', timestamp: '2026-01-02T15:05:05.000Z' }),
+      ]);
+    const backfillLinks = [{ name: 'main', channels: { a: '10', b: '20' }, backfill: { limit: 10 } }];
+
+    it('relays history, exits 0 and never opens a gateway connection', async () => {
+      const { mocks, configPath } = await scenario({ links: backfillLinks, mutate: history });
+      const r = run(configPath, ['--backfill']);
+      assert.equal(await r.exited, 0, r.out);
+      assert.deepEqual(
+        mocks.b.posts.map((p) => p.json.content),
+        ['*2026-01-02 15:04 UTC*\nold one', '*2026-01-02 15:05 UTC*\nold two'],
+      );
+      assert.equal(mocks.a.gatewayUrls.length + mocks.b.gatewayUrls.length, 0);
+      assert.match(r.out, /backfill finished/);
+    });
+
+    it('exits 1 for a link name that does not exist', async () => {
+      const { configPath } = await scenario({ links: backfillLinks });
+      const r = run(configPath, ['--backfill', '--link', 'nope']);
+      assert.equal(await r.exited, 1);
+      assert.match(r.out, /no link named "nope"/);
+    });
+
+    it('exits 1 when the origin channel cannot be read', async () => {
+      const { configPath } = await scenario({
+        links: backfillLinks,
+        mutate: (m) => m.a.inject({ method: 'GET', path: '/messages', status: 403, times: 5 }),
+      });
+      const r = run(configPath, ['--backfill']);
+      assert.equal(await r.exited, 1);
+      assert.match(r.out, /catch-up of "main" failed/);
     });
   });
 
@@ -112,7 +153,9 @@ describe('process', () => {
     });
 
     it('exits 1 when the Gateway rejects the token (fatal close)', async () => {
-      const { mocks, configPath } = await scenario({ mutate: (m) => (m.a.onIdentify = (ws) => ws.close(4004, 'Invalid token')) });
+      const { mocks, configPath } = await scenario({
+        mutate: (m) => (m.a.onIdentify = (ws) => ws.close(4004, 'Invalid token')),
+      });
       const r = run(configPath);
       assert.equal(await r.exited, 1);
       assert.match(r.out, /\[a\] fatal: gateway close 4004/);
@@ -124,7 +167,10 @@ describe('process', () => {
     it('relays create, edit and delete end to end over real sockets', async () => {
       const { mocks, configPath } = await scenario();
       const r = run(configPath);
-      await waitFor(() => (r.out.match(/ready as/g) ?? []).length === 2, { timeout: 8000, what: `both gateways ready\n${r.out}` });
+      await waitFor(() => (r.out.match(/ready as/g) ?? []).length === 2, {
+        timeout: 8000,
+        what: `both gateways ready\n${r.out}`,
+      });
 
       const msg = message({ channel_id: '10', content: 'over the wire' });
       mocks.a.dispatch('MESSAGE_CREATE', msg);

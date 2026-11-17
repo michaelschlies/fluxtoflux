@@ -32,7 +32,12 @@ describe('REST', () => {
       assert.ok(client.endpoints.gateway.startsWith('ws://'));
     });
     it('falls back to endpoints.api and trims trailing slashes', async () => {
-      mock.inject({ method: 'GET', path: '/.well-known/fluxer', status: 200, body: { endpoints: { api: 'https://api.example.com//', gateway: 'wss://g' } } });
+      mock.inject({
+        method: 'GET',
+        path: '/.well-known/fluxer',
+        status: 200,
+        body: { endpoints: { api: 'https://api.example.com//', gateway: 'wss://g' } },
+      });
       await client.discover();
       assert.equal(client.apiBase, 'https://api.example.com/v1');
     });
@@ -123,7 +128,12 @@ describe('REST', () => {
       assert.equal(mock.requests.filter((r) => r.path === '/v1/channels/1').length, 4);
     });
     it('does not retry 4xx and exposes status, code and message', async () => {
-      mock.inject({ method: 'GET', path: '/v1/channels/1', status: 404, body: { code: 'UNKNOWN_CHANNEL', message: 'nope' } });
+      mock.inject({
+        method: 'GET',
+        path: '/v1/channels/1',
+        status: 404,
+        body: { code: 'UNKNOWN_CHANNEL', message: 'nope' },
+      });
       await assert.rejects(client.rest('GET', '/channels/1'), (e) => {
         assert.equal(e.status, 404);
         assert.equal(e.code, 'UNKNOWN_CHANNEL');

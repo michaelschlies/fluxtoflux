@@ -14,6 +14,13 @@ export async function startMock({ name = 'mock', userId = `bot-${name}` } = {}) 
     posts: [], // webhook executions
     patches: [],
     deletes: [],
+    channels: new Map(), // id -> channel/thread object served by GET /channels/<id>
+    threadCreates: [], // { channel, fromMessage, json, id }
+    denyThreadCreate: false,
+    channelPatches: [], // PATCH /channels/<id>: { id, json }
+    reactionOps: [], // { op: 'PUT' | 'DELETE', channel, message, emoji }
+    reactionUsers: {}, // "channel/message/emoji" -> users returned by the reaction list
+    history: new Map(), // channel id -> messages served by GET /channels/<id>/messages
     files: new Map(), // name -> Buffer, served at /files/<name>
     unknownChannels: new Set(),
     denyWebhookCreate: false,
@@ -56,7 +63,10 @@ export async function startMock({ name = 'mock', userId = `bot-${name}` } = {}) 
     };
 
     const inj = m.injections.find(
-      (i) => i.times > 0 && i.method === req.method && (i.path instanceof RegExp ? i.path.test(path) : path.includes(i.path)),
+      (i) =>
+        i.times > 0 &&
+        i.method === req.method &&
+        (i.path instanceof RegExp ? i.path.test(path) : path.includes(i.path)),
     );
     if (inj) {
       inj.times--;
@@ -65,7 +75,12 @@ export async function startMock({ name = 'mock', userId = `bot-${name}` } = {}) 
 
     if (path === '/.well-known/fluxer') {
       return reply(200, {
-        endpoints: { api_public: m.origin, api: m.origin, gateway: `ws://${m.origin.slice(7)}/gw`, media: `${m.origin}/media` },
+        endpoints: {
+          api_public: m.origin,
+          api: m.origin,
+          gateway: `ws://${m.origin.slice(7)}/gw`,
+          media: `${m.origin}/media`,
+        },
       });
     }
     if (path.startsWith('/files/')) {
@@ -75,14 +90,61 @@ export async function startMock({ name = 'mock', userId = `bot-${name}` } = {}) 
       return res.end(file);
     }
 
-    let match = path.match(/^\/v1\/channels\/(\w+)$/);
+    if (path.startsWith('/media/stickers/')) {
+      const file = m.files.get(`sticker-${path.slice(16).replace(/\.\w+$/, '')}`);
+      if (!file) return reply(404, { code: 'NOT_FOUND' });
+      res.writeHead(200, { 'content-type': 'image/webp' });
+      return res.end(file);
+    }
+    if (path === '/v1/users/@me') return reply(200, { id: m.userId, username: 'bridge', bot: true });
+
+    let match = path.match(/^\/v1\/channels\/(\w+)\/messages$/);
+    if (match && req.method === 'GET') {
+      const { before, after, limit = '50' } = query;
+      let msgs = [...(m.history.get(match[1]) ?? [])].sort((a, b) => (BigInt(a.id) < BigInt(b.id) ? 1 : -1));
+      if (before) msgs = msgs.filter((x) => BigInt(x.id) < BigInt(before));
+      if (after) msgs = msgs.filter((x) => BigInt(x.id) > BigInt(after));
+      // Like the real API, `after` pages start at the oldest message past the cursor.
+      if (after) msgs = msgs.reverse();
+      return reply(200, msgs.slice(0, Number(limit)));
+    }
+
+    match = path.match(/^\/v1\/channels\/(\w+)\/(?:messages\/(\w+)\/)?threads$/);
+    if (match && req.method === 'POST') {
+      if (m.denyThreadCreate) return reply(403, { code: 'MISSING_PERMISSIONS' });
+      const json = JSON.parse(raw.toString());
+      const thread = { id: String(m.nextId++), parent_id: match[1], name: json.name, type: json.type ?? 11 };
+      m.channels.set(thread.id, thread);
+      m.threadCreates.push({ channel: match[1], fromMessage: match[2], json, id: thread.id });
+      return reply(201, thread);
+    }
+
+    match = path.match(/^\/v1\/channels\/(\w+)\/messages\/(\w+)\/reactions\/([^/]+)(?:\/@me)?$/);
+    if (match) {
+      const [, channel, message, enc] = match;
+      const emoji = decodeURIComponent(enc);
+      if (req.method === 'GET') return reply(200, m.reactionUsers[`${channel}/${message}/${emoji}`] ?? []);
+      m.reactionOps.push({ op: req.method, channel, message, emoji });
+      return reply(204);
+    }
+
+    match = path.match(/^\/v1\/channels\/(\w+)$/);
     if (match && req.method === 'GET') {
       if (m.unknownChannels.has(match[1])) return reply(404, { code: 'UNKNOWN_CHANNEL' });
-      return reply(200, { id: match[1], name: `chan-${match[1]}` });
+      return reply(200, m.channels.get(match[1]) ?? { id: match[1], name: `chan-${match[1]}` });
+    }
+    if (match && req.method === 'PATCH') {
+      m.channelPatches.push({ id: match[1], json: JSON.parse(raw.toString()) });
+      return reply(200, { id: match[1] });
     }
 
     match = path.match(/^\/v1\/channels\/(\w+)\/webhooks$/);
-    if (match && req.method === 'GET') return reply(200, m.hooks.filter((h) => h.channel_id === match[1]));
+    if (match && req.method === 'GET') {
+      return reply(
+        200,
+        m.hooks.filter((h) => h.channel_id === match[1]),
+      );
+    }
     if (match && req.method === 'POST') {
       if (m.denyWebhookCreate) return reply(403, { code: 'MISSING_PERMISSIONS' });
       const hook = m.addHook(match[1], JSON.parse(raw.toString()).name);
@@ -117,11 +179,11 @@ export async function startMock({ name = 'mock', userId = `bot-${name}` } = {}) 
         return query.wait === 'true' ? reply(200, { id: post.id }) : reply(204);
       }
       if (req.method === 'PATCH') {
-        m.patches.push({ hookId, messageId, json: JSON.parse(raw.toString()), auth: req.headers.authorization });
+        m.patches.push({ hookId, messageId, query, json: JSON.parse(raw.toString()), auth: req.headers.authorization });
         return reply(200, { id: messageId });
       }
       if (req.method === 'DELETE') {
-        m.deletes.push({ hookId, messageId });
+        m.deletes.push({ hookId, messageId, ...(Object.keys(query).length && { query }) });
         return reply(204);
       }
     }
@@ -135,7 +197,13 @@ export async function startMock({ name = 'mock', userId = `bot-${name}` } = {}) 
   // 1006 means "closed abnormally": it can't be sent in a close frame, so drop the TCP socket instead.
   m.closeSockets = (code = 1006, reason = '') =>
     m.sockets.forEach((ws) => (code === 1006 ? ws.terminate() : ws.close(code, reason)));
-  m.onIdentify = (ws) => m.send(ws, 0, { session_id: `sess-${++m.sessions}`, user: { id: m.userId, username: 'bridge' }, guilds: [] }, 'READY');
+  m.onIdentify = (ws) =>
+    m.send(
+      ws,
+      0,
+      { session_id: `sess-${++m.sessions}`, user: { id: m.userId, username: 'bridge' }, guilds: [] },
+      'READY',
+    );
   m.onResume = (ws) => m.send(ws, 0, {}, 'RESUMED');
 
   wss.on('connection', (ws, req) => {

@@ -98,10 +98,66 @@ The system SHALL truncate mirrored content to 4,000 characters, ending with an e
 - **WHEN** content is 5,000 characters
 - **THEN** the mirrored content is exactly 4,000 characters and ends with `…`
 
+### Requirement: Sticker rendering
+The system SHALL download each sticker on a message from the source instance's media endpoint and
+upload it to the destination webhook as an attachment named after the sticker (`<name>.webp`, or
+`<name>.gif` for an animated sticker). A sticker that cannot be downloaded or exceeds
+`maxAttachmentBytes` SHALL be rendered as `[sticker: <name>]` in the content.
+
+#### Scenario: Sticker with text
+- **WHEN** alice posts "look" with a static sticker
+- **THEN** the destination receives content "look" and the sticker image as `files[0]`
+
+#### Scenario: Sticker only
+- **WHEN** a message has no text and one sticker
+- **THEN** it is mirrored with the sticker image as its only file
+
+#### Scenario: Animated sticker
+- **WHEN** a sticker is animated
+- **THEN** the GIF is requested with `animated=true` and uploaded as `<name>.gif`
+
+#### Scenario: Download failure
+- **WHEN** the sticker image returns HTTP 404
+- **THEN** the message is still delivered with `[sticker: <name>]` in its content
+
+#### Scenario: Oversized sticker
+- **WHEN** the sticker image is larger than `maxAttachmentBytes`
+- **THEN** it is rendered as `[sticker: <name>]`
+
+#### Scenario: Edit
+- **WHEN** a message with a sticker has its text edited
+- **THEN** the destination PATCH contains only content fields
+
+### Requirement: Rich embed relay
+The system SHALL include a message's rich embeds (type `rich`), at most 10, in the `embeds` field of the
+destination webhook request, keeping only fields the webhook accepts. It SHALL NOT include link previews,
+which the destination generates from the same URL.
+
+#### Scenario: Bot posts an embed
+- **WHEN** a bot message is bridged (`bridgeBots` true) with one rich embed
+- **THEN** the destination receives its title, description, colour and fields, without `type` or `provider`
+
+#### Scenario: Link preview
+- **WHEN** a message contains a URL and the source attached a link-preview embed
+- **THEN** the destination request has no `embeds`
+
+#### Scenario: More than ten embeds
+- **WHEN** a message has twelve rich embeds
+- **THEN** the first ten are sent
+
+#### Scenario: Embed only
+- **WHEN** a message has no text, no attachment and one rich embed
+- **THEN** it is mirrored
+
 ### Requirement: Skipped messages
-The system SHALL NOT mirror messages in unlinked channels, messages of other types (joins, pins,
-calls and so on), or messages with no text and no attachment (for example sticker-only).
+The system SHALL NOT mirror messages in unlinked channels (other than threads of linked channels),
+messages of other types (joins, pins, calls and so on), or messages with no text, no attachment, no
+sticker and no rich embed.
 
 #### Scenario: System message
 - **WHEN** a USER_JOIN message appears in a linked channel
+- **THEN** nothing is sent
+
+#### Scenario: Empty message
+- **WHEN** a message has no text, attachment, sticker or rich embed, only a link preview
 - **THEN** nothing is sent

@@ -18,6 +18,8 @@ jobs:
         with:
           node-version: 24
       - run: npm ci
+      - name: Lint and format check
+        run: npm run lint
       - name: Tests with coverage
         run: npm run coverage
       - uses: azure/setup-helm@v4
@@ -26,8 +28,26 @@ jobs:
           helm lint charts/fluxtoflux --set tokens.main=x
           helm template t charts/fluxtoflux --set tokens.main=x > /dev/null
 
+  version:
+    # On version tags, the tag must match package.json so a release cannot ship under the wrong number.
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check tag against package.json
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg="$(node -p "require('./package.json').version")"
+          if ! echo "$tag" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::Tag $GITHUB_REF_NAME is not vMAJOR.MINOR.PATCH[-prerelease]"; exit 1
+          fi
+          if [ "$tag" != "$pkg" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $pkg"; exit 1
+          fi
+
   image:
-    needs: test
+    needs: [test, version]
+    if: ${{ !cancelled() && !failure() }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -83,3 +103,26 @@ jobs:
           echo "$GH_TOKEN" | helm registry login ghcr.io -u "${{ github.actor }}" --password-stdin
           helm package charts/fluxtoflux --version "$version" --app-version "$version"
           helm push "fluxtoflux-${version}.tgz" "oci://ghcr.io/${repo%/*}/charts"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chart
+          path: fluxtoflux-*.tgz
+
+  release:
+    # Creates the GitHub Release once the image and chart are both published.
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: chart
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: chart
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          flags=(--generate-notes --verify-tag)
+          case "$GITHUB_REF_NAME" in *-*) flags+=(--prerelease) ;; esac
+          gh release create "$GITHUB_REF_NAME" fluxtoflux-*.tgz             --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" "${flags[@]}"

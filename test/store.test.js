@@ -1,6 +1,7 @@
 // Spec: openspec/specs/message-sync (mirror mapping)
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { Store } from '../src/store.js';
@@ -25,10 +26,10 @@ describe('Store', () => {
     store.add('a', '1', 'b', '20', '900', 'h');
     store.add('a', '1', 'c', '30', '901', 'h');
     const rows = store.get('a', '1');
-    assert.deepEqual(
-      rows.map((r) => [r.dst_inst, r.dst_chan, r.dst_msg]).sort(),
-      [['b', '20', '900'], ['c', '30', '901']],
-    );
+    assert.deepEqual(rows.map((r) => [r.dst_inst, r.dst_chan, r.dst_msg]).sort(), [
+      ['b', '20', '900'],
+      ['c', '30', '901'],
+    ]);
   });
 
   it('keeps instances apart even when message IDs collide', () => {
@@ -79,13 +80,53 @@ describe('Store', () => {
     store.db.close();
     const raw = new DatabaseSync(join(tmp.dir, 'bridge.sqlite'));
     const day = 86_400_000;
-    raw.prepare('INSERT INTO mirrors VALUES (?,?,?,?,?,?,?)').run('a', 'old', 'b', '20', '2', 'h', Date.now() - 100 * day);
-    raw.prepare('INSERT INTO mirrors VALUES (?,?,?,?,?,?,?)').run('a', 'edge', 'b', '20', '3', 'h', Date.now() - 89 * day);
+    const insert = raw.prepare(
+      'INSERT INTO mirrors (src_inst, src_msg, dst_inst, dst_chan, dst_msg, hash, created) VALUES (?,?,?,?,?,?,?)',
+    );
+    insert.run('a', 'old', 'b', '20', '2', 'h', Date.now() - 100 * day);
+    insert.run('a', 'edge', 'b', '20', '3', 'h', Date.now() - 89 * day);
     raw.close();
     store = new Store(tmp.dir);
     assert.deepEqual(store.get('a', 'old'), []);
     assert.equal(store.get('a', 'edge').length, 1);
     assert.equal(store.get('a', 'recent').length, 1);
+  });
+
+  it('upgrades a database created before thread and reaction support', () => {
+    const dir = join(tmp.dir, 'old');
+    mkdirSync(dir);
+    const raw = new DatabaseSync(join(dir, 'bridge.sqlite'));
+    raw.exec(`CREATE TABLE mirrors (src_inst TEXT NOT NULL, src_msg TEXT NOT NULL, dst_inst TEXT NOT NULL,
+      dst_chan TEXT NOT NULL, dst_msg TEXT NOT NULL, hash TEXT NOT NULL, created INTEGER NOT NULL,
+      PRIMARY KEY (src_inst, src_msg, dst_inst))`);
+    raw.prepare('INSERT INTO mirrors VALUES (?,?,?,?,?,?,?)').run('a', '1', 'b', '20', '9', 'h', Date.now());
+    raw.close();
+    const upgraded = new Store(dir);
+    assert.equal(upgraded.get('a', '1')[0].dst_thread, null);
+    upgraded.add('a', '2', 'b', '20', '10', 'h', '10', '77');
+    assert.equal(upgraded.getByCopy('b', '10')[0].src_chan, '10');
+    upgraded.db.close();
+  });
+
+  it('keeps thread pairings together and removes them as a group', () => {
+    store.addThread('g1', 'a', '100', '10');
+    store.addThread('g1', 'b', '200', '20');
+    assert.deepEqual(
+      store
+        .threadGroup('b', '200')
+        .map((r) => r.inst)
+        .sort(),
+      ['a', 'b'],
+    );
+    store.removeThread('a', '100');
+    assert.deepEqual(store.threadGroup('b', '200'), []);
+  });
+
+  it('keeps the newest watermark per channel', () => {
+    assert.equal(store.watermark('a', '10'), null);
+    store.setWatermark('a', '10', '5');
+    assert.equal(store.watermark('a', '10'), '5');
+    assert.equal(store.watermark('a', '11'), null);
   });
 
   it('creates the data directory when it does not exist', () => {
