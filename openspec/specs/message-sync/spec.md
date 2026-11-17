@@ -61,9 +61,31 @@ as already deleted.
 - **WHEN** the destination copy was deleted by a moderator
 - **THEN** the 404 is ignored and no error is logged as a failure
 
-### Requirement: Out of scope
-Reactions, stickers, embeds, threads and backfill of history before the bridge started are NOT synchronised.
+### Requirement: Embed edit propagation
+The system SHALL, when the rich embeds of a mapped bot or webhook message change, PATCH each mirrored copy
+with the re-rendered `embeds`. The stored hash SHALL cover the raw text and the rich embeds, so an update
+that only adds or changes link previews does not modify the copy.
 
-#### Scenario: Reaction added
-- **WHEN** someone reacts to a mirrored message
+#### Scenario: Bot edits its embed
+- **WHEN** a bot changes an embed's description from "running" to "done"
+- **THEN** every mirrored copy is PATCHed with the new embed
+
+#### Scenario: Preview arrives later
+- **WHEN** an update adds a link-preview embed and the rich embeds are unchanged
+- **THEN** no PATCH is sent
+
+#### Scenario: Embed removed
+- **WHEN** an edit removes the only rich embed and the text is non-empty
+- **THEN** the copy is PATCHed with an empty `embeds` list
+
+#### Scenario: Human message
+- **WHEN** a human's message is edited
+- **THEN** the PATCH has no `embeds` field
+
+### Requirement: Out of scope
+Custom-emoji reactions, private threads, forum and media channel posts, and link-preview embeds (which the
+destination regenerates itself) are NOT synchronised.
+
+#### Scenario: Custom emoji reaction
+- **WHEN** someone reacts to a mirrored message with a custom emoji
 - **THEN** no reaction appears on the copy

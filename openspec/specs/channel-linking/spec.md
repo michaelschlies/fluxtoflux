@@ -51,11 +51,24 @@ link. `oneWayFrom`, when present, SHALL name one of the link's instances.
 - **THEN** loading fails naming the link and the key
 
 ### Requirement: Option defaults
-The system SHALL default `bridgeBots` to false, `maxAttachmentBytes` to 25 MiB and `dataDir` to `data`.
+The system SHALL default `bridgeBots` to false, `bridgeReactions` to true, `bridgeThreads` to true,
+`maxAttachmentBytes` to 25 MiB and `dataDir` to `data`.
 
 #### Scenario: No options block
 - **WHEN** the file has no `options`
-- **THEN** all three defaults apply
+- **THEN** all five defaults apply
+
+### Requirement: Backfill configuration
+The system SHALL accept `links[].backfill` with exactly one of `since` (a parseable date) or `limit`
+(a positive integer), and SHALL fail loading otherwise.
+
+#### Scenario: Valid
+- **WHEN** a link has `backfill: { since: "2026-01-01" }` or `backfill: { limit: 50 }`
+- **THEN** configuration loads
+
+#### Scenario: Invalid
+- **WHEN** `backfill` has both keys, neither, an unparseable date, or a limit of 0 or 1.5
+- **THEN** loading fails mentioning backfill
 
 ### Requirement: Webhook provisioning
 For every linked channel the system SHALL resolve a webhook before connecting to the Gateway: the

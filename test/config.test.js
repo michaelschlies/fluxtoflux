@@ -53,7 +53,13 @@ describe('loadConfig', () => {
   describe('instances', () => {
     it('accepts a valid config and applies option defaults', () => {
       const cfg = load(base());
-      assert.deepEqual(cfg.options, { bridgeBots: false, maxAttachmentBytes: 25 * 1024 * 1024, dataDir: 'data' });
+      assert.deepEqual(cfg.options, {
+        bridgeBots: false,
+        bridgeReactions: true,
+        bridgeThreads: true,
+        maxAttachmentBytes: 25 * 1024 * 1024,
+        dataDir: 'data',
+      });
     });
     it('keeps explicit options and fills in the rest', () => {
       const cfg = load({ ...base(), options: { bridgeBots: true, dataDir: '/x' } });
@@ -142,6 +148,28 @@ describe('loadConfig', () => {
       const c = base();
       c.links[0].oneWayFrom = 'main';
       assert.equal(load(c).links[0].oneWayFrom, 'main');
+    });
+    describe('backfill', () => {
+      const withBackfill = (backfill) => {
+        const c = base();
+        c.links[0].backfill = backfill;
+        return c;
+      };
+      it('accepts since or limit', () => {
+        assert.doesNotThrow(() => load(withBackfill({ since: '2026-01-01' })));
+        assert.doesNotThrow(() => load(withBackfill({ limit: 50 })));
+      });
+      it('rejects both, neither, a bad date and a bad limit', () => {
+        for (const bf of [
+          { since: '2026-01-01', limit: 5 },
+          {},
+          { since: 'yesterday-ish' },
+          { limit: 0 },
+          { limit: 1.5 },
+        ]) {
+          assert.throws(() => load(withBackfill(bf)), /backfill/);
+        }
+      });
     });
     it('accepts a config with no links', () => {
       const c = base();

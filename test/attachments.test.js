@@ -15,7 +15,14 @@ describe('attachments', () => {
   const file = (name, bytes, extra = {}) => {
     const data = Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes);
     A.files.set(name, data);
-    return { id: `att-${name}`, filename: name, size: data.length, content_type: 'application/octet-stream', url: A.fileUrl(name), ...extra };
+    return {
+      id: `att-${name}`,
+      filename: name,
+      size: data.length,
+      content_type: 'application/octet-stream',
+      url: A.fileUrl(name),
+      ...extra,
+    };
   };
 
   it('re-uploads a file as multipart with its text and metadata', async () => {
@@ -45,10 +52,28 @@ describe('attachments', () => {
   });
 
   it('indexes several attachments 0..n-1 in order', async () => {
-    await h.emit('a', 'MESSAGE_CREATE', message({ attachments: [file('one.txt', '1'), file('two.txt', '2'), file('three.txt', '3')] }));
+    await h.emit(
+      'a',
+      'MESSAGE_CREATE',
+      message({ attachments: [file('one.txt', '1'), file('two.txt', '2'), file('three.txt', '3')] }),
+    );
     const post = B.posts[0];
-    assert.deepEqual(post.json.attachments.map((a) => [a.id, a.filename]), [[0, 'one.txt'], [1, 'two.txt'], [2, 'three.txt']]);
-    assert.deepEqual(post.files.map((f) => [f.field, f.bytes.toString()]), [['files[0]', '1'], ['files[1]', '2'], ['files[2]', '3']]);
+    assert.deepEqual(
+      post.json.attachments.map((a) => [a.id, a.filename]),
+      [
+        [0, 'one.txt'],
+        [1, 'two.txt'],
+        [2, 'three.txt'],
+      ],
+    );
+    assert.deepEqual(
+      post.files.map((f) => [f.field, f.bytes.toString()]),
+      [
+        ['files[0]', '1'],
+        ['files[1]', '2'],
+        ['files[2]', '3'],
+      ],
+    );
   });
 
   it('uploads a file exactly at the size cap', async () => {
@@ -67,7 +92,10 @@ describe('attachments', () => {
     it('uploads the small file and links the large one in the same message', async () => {
       const big = file('big.bin', Buffer.alloc(2000), { size: 2000 });
       await h.emit('a', 'MESSAGE_CREATE', message({ content: '', attachments: [file('ok.txt', 'ok'), big] }));
-      assert.deepEqual(B.posts[0].files.map((f) => f.filename), ['ok.txt']);
+      assert.deepEqual(
+        B.posts[0].files.map((f) => f.filename),
+        ['ok.txt'],
+      );
       assert.equal(B.posts[0].json.content, big.url, 'no leading newline when there was no text');
     });
   });
@@ -78,8 +106,15 @@ describe('attachments', () => {
       await h.emit('a', 'MESSAGE_CREATE', message({ content: 'two files', attachments: [gone, file('ok.txt', 'ok')] }));
       const post = B.posts[0];
       assert.equal(post.json.content, `two files\n${gone.url}`);
-      assert.deepEqual(post.files.map((f) => f.filename), ['ok.txt']);
-      assert.deepEqual(post.json.attachments, [{ id: 0, filename: 'ok.txt' }], 'index 0 refers to the file actually sent');
+      assert.deepEqual(
+        post.files.map((f) => f.filename),
+        ['ok.txt'],
+      );
+      assert.deepEqual(
+        post.json.attachments,
+        [{ id: 0, filename: 'ok.txt' }],
+        'index 0 refers to the file actually sent',
+      );
       assert.ok(h.logs.some((l) => l.includes('gone.png download failed')));
     });
     it('sends plain JSON when every download fails', async () => {
@@ -94,14 +129,21 @@ describe('attachments', () => {
       assert.equal(B.posts[0].json.content, 'text stays');
     });
     it('drops a message whose only attachment is expired', async () => {
-      await h.emit('a', 'MESSAGE_CREATE', message({ content: '', attachments: [{ id: 'x', filename: 'old.png', size: 10, url: null }] }));
+      await h.emit(
+        'a',
+        'MESSAGE_CREATE',
+        message({ content: '', attachments: [{ id: 'x', filename: 'old.png', size: 10, url: null }] }),
+      );
       assert.equal(B.posts.length, 0);
     });
     it('does not break the channel when the source file host is down', async () => {
       const unreachable = { id: 'x', filename: 'a.png', size: 5, url: 'http://127.0.0.1:1/a.png' };
       await h.emit('a', 'MESSAGE_CREATE', message({ content: 'first', attachments: [unreachable] }));
       await h.emit('a', 'MESSAGE_CREATE', message({ content: 'second' }));
-      assert.deepEqual(B.posts.map((p) => p.json.content), [`first\n${unreachable.url}`, 'second']);
+      assert.deepEqual(
+        B.posts.map((p) => p.json.content),
+        [`first\n${unreachable.url}`, 'second'],
+      );
     });
   });
 });

@@ -10,7 +10,14 @@ export function loadConfig(path = process.env.BRIDGE_CONFIG ?? 'config.json') {
   const cfg = {
     instances: raw.instances ?? {},
     links: raw.links ?? [],
-    options: { bridgeBots: false, maxAttachmentBytes: 25 * 1024 * 1024, dataDir: 'data', ...raw.options },
+    options: {
+      bridgeBots: false,
+      bridgeReactions: true,
+      bridgeThreads: true,
+      maxAttachmentBytes: 25 * 1024 * 1024,
+      dataDir: 'data',
+      ...raw.options,
+    },
   };
   for (const [key, inst] of Object.entries(cfg.instances)) {
     // Tokens travel as FLUXER_TOKEN_<KEY>, so the key has to be a valid env var name part.
@@ -34,6 +41,18 @@ export function loadConfig(path = process.env.BRIDGE_CONFIG ?? 'config.json') {
       }
       if (seen.has(`${m}:${id}`)) throw new Error(`Channel ${id} on "${m}" is used by more than one link`);
       seen.add(`${m}:${id}`);
+    }
+    const bf = link.backfill;
+    if (bf !== undefined) {
+      const hasSince = bf?.since !== undefined;
+      const hasLimit = bf?.limit !== undefined;
+      if (hasSince === hasLimit) throw new Error(`Link "${link.name}": backfill needs exactly one of since or limit`);
+      if (hasSince && Number.isNaN(Date.parse(bf.since))) {
+        throw new Error(`Link "${link.name}": backfill.since is not a date`);
+      }
+      if (hasLimit && !(Number.isInteger(bf.limit) && bf.limit > 0)) {
+        throw new Error(`Link "${link.name}": backfill.limit must be a positive integer`);
+      }
     }
     if (link.oneWayFrom && !members.includes(link.oneWayFrom)) {
       throw new Error(`Link "${link.name}": oneWayFrom must be one of ${members.join(', ')}`);

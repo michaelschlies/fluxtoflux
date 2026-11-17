@@ -13,13 +13,14 @@ public `fluxer.app` and a self-hosted instance, so two communities can talk to e
 - `src/config.js`: loads and validates `config.json` (instances, links, options)
 - `src/client.js`: `FluxerClient`, one per instance: discovery, REST with rate-limit handling, Gateway session
 - `src/bridge.js`: `Bridge`, the relay logic: webhook provisioning, create/edit/delete mirroring
-- `src/store.js`: SQLite map from source message to its mirrored copies
+- `src/store.js`: SQLite map from source message to its mirrored copies, paired threads and per-channel watermarks
 - `src/index.js`: wiring, `--check` mode, shutdown
 
 Each instance has its own bot token and Gateway connection. Messages are mirrored by executing a
 per-channel webhook on the destination so the sender's name and avatar are shown.
 
 ## Conventions
+- Code style is defined in `STYLE.md` and enforced by `npm run lint` (ESLint and Prettier) in CI. Agents follow `AGENTS.md`.
 - Snowflake IDs are always strings; never parse them as numbers.
 - Every request or event handler error is logged and isolated; one failing destination must not
   affect others.

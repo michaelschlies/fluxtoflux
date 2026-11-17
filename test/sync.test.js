@@ -54,7 +54,10 @@ describe('sync', () => {
       const { msg } = await mirrored({ content: 'v1' });
       await edit(msg, 'v2');
       await edit(msg, 'v1');
-      assert.deepEqual(B.patches.map((p) => p.json.content), ['v2', 'v1']);
+      assert.deepEqual(
+        B.patches.map((p) => p.json.content),
+        ['v2', 'v1'],
+      );
     });
 
     it('re-renders mentions in the edited text', async () => {
@@ -93,7 +96,10 @@ describe('sync', () => {
 
     it('does not edit when the update comes from its own webhook or a bot', async () => {
       const { msg } = await mirrored({ content: 'x' });
-      await edit({ ...msg, webhook_id: A.hooks[0].id, author: { id: A.hooks[0].id, username: 'w', bot: true } }, 'changed');
+      await edit(
+        { ...msg, webhook_id: A.hooks[0].id, author: { id: A.hooks[0].id, username: 'w', bot: true } },
+        'changed',
+      );
       await edit({ ...msg, author: { id: '8', username: 'bot', bot: true } }, 'changed');
       assert.equal(B.patches.length, 0);
     });
@@ -104,7 +110,10 @@ describe('sync', () => {
       await edit(msg, 'v2');
       B.goneHooks.clear();
       await edit(msg, 'v3');
-      assert.deepEqual(B.patches.map((p) => p.json.content), ['v3']);
+      assert.deepEqual(
+        B.patches.map((p) => p.json.content),
+        ['v3'],
+      );
       assert.ok(h.logs.some((l) => l.includes('UNKNOWN_WEBHOOK')));
     });
 
@@ -114,7 +123,10 @@ describe('sync', () => {
       await edit(msg, 'v2');
       B.goneHooks.clear();
       await edit(msg, 'v2');
-      assert.deepEqual(B.patches.map((p) => p.json.content), ['v2']);
+      assert.deepEqual(
+        B.patches.map((p) => p.json.content),
+        ['v2'],
+      );
     });
   });
 
